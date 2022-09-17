@@ -22,6 +22,12 @@ impl Printable for i32 {
     }
 }
 
+impl Printable for u8 {
+    fn print(&self) {
+        put_char(*self);
+    }
+}
+
 fn put_char(byte: u8) {
     unsafe {
         asm!(
@@ -83,4 +89,20 @@ macro_rules! put {
         crate::print::put_printable(" ");
         put!( $($rest),+);
     };
+}
+
+pub(crate) fn get_char() -> u8 {
+    let byte;
+
+    unsafe {
+        asm!(
+            "call   usart_get_byte",
+            out("a6") byte,
+            out("t0") _,
+            out("t1") _,
+            out("ra") _,
+        )
+    };
+
+    byte
 }

@@ -2,6 +2,7 @@
 
 .global _start
 .global usart_put_byte
+.global usart_get_byte
 
 _start:
     call    disable_interrupts
@@ -166,9 +167,10 @@ init_usart:
     sw      a3, 0x08(a2)    # USART_BAUD
 
     # Set the TEN (transmission enable) bit in USART_CTL0
+    # Set the REN (receiver enable) bit in USART_CTL0
     # Set the UEN (USART enable) bit in USART_CTL0
     lw      a3, 0x0C(a2)
-    li      a4, 1 << 3 | 1 << 13
+    li      a4, 1 << 2 | 1 << 3 | 1 << 13
     or      a3, a3, a4
     sw      a3, 0x0C(a2)
 
@@ -198,7 +200,7 @@ usart_put_string_byte:
 usart_put_byte:
     # Wait for the TBE (transmit buffer empty) to be asserted
     li      t0, 0x40013800  # USART0 base
-    lw      t1, 0x00(t0)
+    lw      t1, 0x00(t0)    # USART_STAT
     andi    t1, t1, 1 << 7
     beqz    t1, usart_put_byte
 
@@ -212,6 +214,25 @@ usart_end:
     lw      a3, 0x00(a2)
     andi    a3, a3, 1 << 7
     beqz    a3, usart_end
+
+    ret
+
+usart_get_byte:
+    # Wait for RBNE (read data buffer not empty) to be asserted
+    li      t0, 0x40013800  # USART0 base
+    lw      t1, 0x00(t0)    # USART_STAT
+    andi    t1, t1, 1 << 5  # RBNE bit
+    beqz    t1, usart_get_byte
+
+    # Check status and errors
+    lw      t1, 0x00(t0)    # USART_STAT
+    andi    t1, t1, 0b111   # Parity, frame, or noise error
+    beqz    t1, 1f
+    lb      t1, 0x04(t0)    # Discard byte
+    j       usart_get_byte
+
+    # Load byte from USART_DATA
+1:  lb      a6, 0x04(t0)
 
     ret
 
