@@ -1,6 +1,7 @@
 .section .text
 
 .global _start
+.global usart_put_byte
 
 _start:
     call    disable_interrupts
@@ -42,8 +43,10 @@ _start:
     # la      a0, 100000009
     # call    send_number
 
-    # call    cycle_blue_led
-    j       exit
+    li      sp, 0x20000000 + 32 * 1024
+
+    call    os_main
+    call    cycle_blue_led
 
 exit:
     wfi
@@ -114,12 +117,12 @@ cycle_blue_led:
     li      a0, 30000
     call    delay
 
-    la      a0, number_prompt
-    li      a1, 8
-    call    usart_send_string
+    # la      a0, number_prompt
+    # li      a1, 8
+    # call    usart_send_string
 
-    csrr    a0, mcycle
-    call    send_number
+    # csrr    a0, mcycle
+    # call    send_number
 
     j       cycle_blue_led
 
