@@ -4,7 +4,7 @@ RUST_LIB=target/riscv32imac-unknown-none-elf/release/libmini_riscv_os.a
 
 v32: ${RUST_LIB}
 	riscv64-unknown-elf-as -march=rv32im -mabi=ilp32 src/start.s -o start.o
-	riscv64-unknown-elf-ld -m elf32lriscv -T src/memory.ld start.o ${RUST_LIB} -o start.elf
+	riscv64-unknown-elf-ld -flto -Oz -m elf32lriscv -T src/memory.ld start.o ${RUST_LIB} -o start.elf
 	riscv64-unknown-elf-objcopy -O binary start.elf start.bin
 
 ${RUST_LIB}: src/lib.rs
