@@ -13,7 +13,7 @@ _start:
     call    turn_off_blue_led
 
     la      a0, helloworld
-    li      a1, 22
+    li      a1, 24
     call    usart_send_string
 
     la      a0, cycle_count
@@ -240,7 +240,7 @@ usart_get_byte:
 
 send_hello_world:
     la      a0, helloworld
-    li      a1, 22
+    li      a1, 24
     j       usart_send_string
 
 # --------
@@ -301,7 +301,7 @@ send_digit:
 # --------
 
 helloworld:
-    .ascii  "\33[35mHello world\33[0m\r\n"
+    .ascii  "\r\n\33[35mHello world\33[0m\r\n"
 
 number_prompt:
     .ascii  "Number: "

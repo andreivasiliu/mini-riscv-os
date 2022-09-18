@@ -28,7 +28,7 @@ impl Printable for u8 {
     }
 }
 
-fn put_char(byte: u8) {
+pub(crate) fn put_char(byte: u8) {
     unsafe {
         asm!(
             "call   usart_put_byte",
@@ -79,16 +79,32 @@ pub(crate) fn put_printable(p: impl Printable) {
 
 #[macro_export]
 macro_rules! put {
-    ($expression:expr) => {
+    () => {{
+        crate::print::put_printable("\r\n");
+    }};
+
+    ($expression:expr) => {{
         crate::print::put_printable($expression);
         crate::print::put_printable("\r\n");
-    };
+    }};
 
-    ($expression:expr, $($rest:expr),+) => {
+    ($expression:expr, $($rest:expr),+) => {{
         crate::print::put_printable($expression);
         crate::print::put_printable(" ");
-        put!( $($rest),+);
-    };
+        put!($($rest),+);
+    }};
+}
+
+#[macro_export]
+macro_rules! putn {
+    ($expression:expr) => {{
+        crate::print::put_printable($expression);
+    }};
+
+    ($expression:expr, $($rest:expr),+) => {{
+        crate::print::put_printable($expression);
+        putn!($($rest),+);
+    }};
 }
 
 pub(crate) fn get_char() -> u8 {
