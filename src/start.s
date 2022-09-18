@@ -11,40 +11,15 @@ _start:
     call    turn_on_blue_led
     call    init_usart
     call    turn_off_blue_led
+    call    setup_interrupts
 
     la      a0, helloworld
-    li      a1, 24
+    li      a1, 40
     call    usart_send_string
 
-    la      a0, cycle_count
-    li      a1, 13
-    call    usart_send_string
+    call    show_interrupt_info
 
-    csrr    a0, mcycle
-    call    send_number
-
-    la      a0, trap_cause
-    li      a1, 12
-    call    usart_send_string
-
-    csrr    a0, mcause
-    call    send_number
-
-    la      a0, return_address
-    li      a1, 16
-    call    usart_send_string
-
-    csrr    a0, mepc
-    call    send_number
-
-    # la      a0, number_prompt
-    # li      a1, 8
-    # call    usart_send_string
-
-    # la      a0, 100000009
-    # call    send_number
-
-    li      sp, 0x20000000 + 32 * 1024
+    li      sp, 0x20000000 + 31 * 1024
 
     call    os_main
     call    cycle_blue_led
@@ -59,6 +34,57 @@ disable_interrupts:
     csrwi   mie, 0          # Disable machine interrupt-pending
     csrwi   mip, 0          # Disable machine interrupt-enabled
     ret
+
+# --------
+
+setup_interrupts:
+    la      a0, interrupt_handler
+    csrw    mtvec, a0
+    csrwi   mie, 1 << 3     # Enable software interrupts
+    ret
+
+interrupt_handler:
+    # Save registers
+    csrw    mscratch, sp
+    li      sp, 0x20000000 + 32 * 1024
+    sw      ra, -4(sp)
+    sw      a0, -8(sp)
+    sw      a1, -12(sp)
+    sw      a2, -16(sp)
+    sw      a3, -20(sp)
+    sw      a4, -24(sp)
+    sw      a5, -28(sp)
+    sw      a6, -32(sp)
+    sw      t0, -36(sp)
+    sw      t1, -40(sp)
+
+    call    turn_on_blue_led
+    la      a0, bios_prefix
+    li      a1, 16
+    call    usart_send_string
+    la      a0, interrupt_taken
+    li      a1, 18
+    call    usart_send_string
+
+    # Skip program counter over the ecall instruction
+    csrr    a0, mepc
+    addi    a0, a0, 4
+    csrw    mepc, a0
+
+    # Restore registers
+    lw      ra, -4(sp)
+    lw      a0, -8(sp)
+    lw      a1, -12(sp)
+    lw      a2, -16(sp)
+    lw      a3, -20(sp)
+    lw      a4, -24(sp)
+    lw      a5, -28(sp)
+    lw      a6, -32(sp)
+    lw      t0, -36(sp)
+    lw      t1, -40(sp)
+    csrr    sp, mscratch
+
+    mret
 
 # --------
 
@@ -180,9 +206,9 @@ usart_send_string:
     # Init string offset at 0
     li      a4, 0
 
-usart_put_string_byte:
+1:
     # Finish when byte offset equals length
-    beq     a4, a1, usart_end
+    beq     a4, a1, 2f
 
     # Load byte from string
     add     a5, a0, a4
@@ -195,7 +221,10 @@ usart_put_string_byte:
     # Increment byte offset
     addi    a4, a4, 1
 
-    j       usart_put_string_byte
+    j       1b
+
+2:  # End
+    ret
 
 usart_put_byte:
     # Wait for the TBE (transmit buffer empty) to be asserted
@@ -250,36 +279,36 @@ send_error:
     li      a1, 11
     call    usart_send_string
 
-    mv      ra, s0
-    ret
+    j       4f
 
 send_number:
     mv      s0, ra
 
-    bgez    a0, positive
+    bgez    a0, 1f
 
+    # Negative
     la      a6, '-'
     call    usart_put_byte
 
     neg     a0, a0
 
-positive:
+1:  # Positive
     li      a1, 10      # Divisor (base)
     li      a2, 0       # Reversed number
     li      a5, 0       # Digit count
-    li      a7, 10       # Digit limit
+    li      a7, 10      # Digit limit
 
-reverse_digit:
+2:  # Reverse digit
     mul     a2, a2, a1
     remu    a3, a0, a1
     add     a2, a2, a3
     divu    a0, a0, a1
     addi    a5, a5, 1
     bgt     a5, a7, send_error
-    bnez    a0, reverse_digit
+    bnez    a0, 2b
     mv      a0, a2
 
-send_digit:
+3:  # Send digit
     rem     a6, a0, a1
     addi    a6, a6, '0'
     div     a0, a0, a1
@@ -287,24 +316,54 @@ send_digit:
 
     call    usart_put_byte
 
-    bgtz    a5, send_digit
+    bgtz    a5, 3b
 
     la      a6, '\r'
     call    usart_put_byte
     la      a6, '\n'
     call    usart_put_byte
-    call    usart_end
+    # call    usart_end
 
+4:  # End
     mv      ra, s0
     ret
 
 # --------
 
+.macro print message, length, csr
+    la      a0, bios_prefix
+    li      a1, 16
+    call    usart_send_string
+
+    la      a0, \message
+    li      a1, \length
+    call    usart_send_string
+
+    csrr    a0, \csr
+    call    send_number
+.endm
+
+show_interrupt_info:
+    mv      s2, ra
+
+    print   cycle_count, 13, mcycle
+    print   trap_cause, 12, mcause
+    print   interrupt_vector, 18, mtvec
+    print   return_address, 16, mepc
+
+    mv      ra, s2
+    ret
+
+# --------
+
 helloworld:
-    .ascii  "\r\n\33[35mHello world\33[0m\r\n"
+    .ascii  "\r\n[\33[35mbios\33[0m] \33[35mHello world\33[0m\r\n"
 
 number_prompt:
     .ascii  "Number: "
+
+bios_prefix:
+    .ascii  "[\33[35mbios\33[0m] "
 
 cycle_count:
     .ascii  "Cycle count: "
@@ -312,8 +371,14 @@ cycle_count:
 trap_cause:
     .ascii  "Trap cause: "
 
+interrupt_vector:
+    .ascii  "Interrupt vector: "
+
 return_address:
     .ascii  "Return address: "
+
+interrupt_taken:
+    .ascii  "Interrupt taken!\r\n"
 
 error:
     .ascii  "<too big>\r\n"

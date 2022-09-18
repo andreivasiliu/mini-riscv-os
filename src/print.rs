@@ -1,4 +1,4 @@
-use core::arch::asm;
+use crate::bios_interface::put_char;
 
 pub(crate) trait Printable {
     fn print(&self);
@@ -26,18 +26,6 @@ impl Printable for u8 {
     fn print(&self) {
         put_char(*self);
     }
-}
-
-pub(crate) fn put_char(byte: u8) {
-    unsafe {
-        asm!(
-            "call   usart_put_byte",
-            in("a6") byte,
-            out("t0") _,
-            out("t1") _,
-            out("ra") _,
-        )
-    };
 }
 
 fn put_string(s: &[u8]) {
@@ -107,18 +95,3 @@ macro_rules! putn {
     }};
 }
 
-pub(crate) fn get_char() -> u8 {
-    let byte;
-
-    unsafe {
-        asm!(
-            "call   usart_get_byte",
-            out("a6") byte,
-            out("t0") _,
-            out("t1") _,
-            out("ra") _,
-        )
-    };
-
-    byte
-}

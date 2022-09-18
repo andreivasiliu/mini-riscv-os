@@ -1,10 +1,11 @@
 #![no_std]
 #![no_main]
 
-use crate::print::{get_char, put_char};
+use crate::bios_interface::{get_char, put_char, ecall};
 
 mod panic;
 mod print;
+mod bios_interface;
 
 #[no_mangle]
 fn os_main() {
@@ -111,6 +112,11 @@ fn process_command(command: &[u8]) {
     match command {
         b"help" => {
             put!("No help available at this time.");
+        }
+        b"ecall" => {
+            put!("Calling system interrupt...");
+            ecall();
+            put!("Back to Rust now.");
         }
         c => put!("Unknown command:", c),
     }
