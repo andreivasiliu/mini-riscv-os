@@ -3,6 +3,8 @@
 .global _start
 .global usart_put_byte
 .global usart_get_byte
+.global flash_write
+.global flash_page_erase
 
 _start:
     call    disable_interrupts
@@ -44,7 +46,7 @@ setup_interrupts:
     ret
 
 interrupt_handler:
-    # Save registers
+    # Save basic registers
     csrw    mscratch, sp
     li      sp, 0x20000000 + 32 * 1024
     sw      ra, -4(sp)
@@ -59,14 +61,28 @@ interrupt_handler:
     sw      t1, -40(sp)
 
     call    turn_on_blue_led
+
+    csrr    a2, mcause
+    addi    a2, a2, -11     # Environment call from M-mode
+    beqz    a2, 1f
+
+    # Not M-mode ecall; reject and return
     la      a0, bios_prefix
+    li      a1, 16
+    call    usart_send_string
+    la      a0, unknown_interrupt_taken
+    li      a1, 26
+    call    usart_send_string
+    j       2f
+
+1:  la      a0, bios_prefix
     li      a1, 16
     call    usart_send_string
     la      a0, interrupt_taken
     li      a1, 18
     call    usart_send_string
 
-    # Skip program counter over the ecall instruction
+2:  # Skip program counter over the ecall instruction
     csrr    a0, mepc
     addi    a0, a0, 4
     csrw    mepc, a0
@@ -330,6 +346,112 @@ send_number:
 
 # --------
 
+# FMC base address: 0x4002 2000 (flash memory controller)
+# 
+
+flash_page_erase:
+    # Input: a0 - page number
+
+    # Unlock if necessary (if LK is set)
+    la      a1, 0x40022000  # FMC base
+    li      a2, 0x45670123  # Load unlock key 1
+    sw      a2, 0x04(a1)    # Store into FMC_KEY
+    li      a2, 0xCDEF89AB  # Load unlock key 2
+    sw      a2, 0x04(a1)    # Store into FMC_KEY
+
+    # Check BUSY bit in FMC_STAT (must be 0)
+1:  lw      a2, 0x0C(a1)    # FMC_STAT
+    andi    a2, a2, 1 << 0  # BUSY bit
+    bnez    a2, 1b
+
+    # Set the PER bit in FMC_CTL
+    lw      a2, 0x10(a1)    # FMC_CTL
+    ori     a2, a2, 1 << 1  # Set PER (main flash page erase)
+    sw      a2, 0x10(a1)
+
+    # Write page absolute address into the FMC_ADDR register
+    li      a2, 0x08000000
+    slli    a0, a0, 10      # Multiply by 1024 (block size)
+    add     a2, a2, a0      # Get block address
+    sw      a2, 0x14(a1)    # Store into FMC_ADDR
+
+    # Send the page erase command by setting START in FMC_CTL
+    lw      a2, 0x10(a1)    # FMC_CTL
+    ori     a2, a2, 1 << 6  # Set START bit
+    sw      a2, 0x10(a1)
+
+    # Check the BUSY bit
+1:  lw      a2, 0x0C(a1)    # FMC_STAT
+    andi    a2, a2, 1 << 0  # BUSY bit
+    bnez    a2, 1b
+
+    # Lock
+    lw      a2, 0x10(a1)    # FMC_CTL
+    li      a3, ~(1 << 0)   # Clear PER bit
+    and     a2, a2, a3
+    ori     a2, a2, 1 << 7  # Set LK bit (lock)
+    sw      a2, 0x10(a1)
+
+    ret
+
+flash_write:
+    # Input: a0 - source page number, a1 - target page number
+
+    # Unlock if necessary (if LK is set)
+    la      a2, 0x40022000  # FMC base
+    li     a3, 0x45670123  # Load unlock key 1
+    sw      a3, 0x04(a2)    # Store into FMC_KEY
+    li     a3, 0xCDEF89AB  # Load unlock key 2
+    sw      a3, 0x04(a2)    # Store into FMC_KEY
+
+    # Check BUSY bit in FMC_STAT (must be 0)
+1:  lw      a3, 0x0C(a2)    # FMC_STAT
+    andi    a3, a3, 1 << 0  # BUSY bit
+    bnez    a3, 1b
+
+    # Get destination page address
+    li      a6, 0x08000000
+    slli    a1, a1, 10      # Multiply by 1024 (block size)
+    add     a6, a6, a1      # Get block address
+
+    # Get source memory address
+    li      a4, 0x20000000
+    slli    a0, a0, 10
+    add     a4, a4, a0
+
+    # Set limit
+    addi    a0, a4, 1024
+
+1:  # Set the PG bit in FMC_CTL
+    lw      a3, 0x10(a2)    # FMC_CTL
+    ori     a3, a3, 1 << 0  # Set PG (main flash program)
+    sw      a3, 0x10(a2)
+
+    # Write 16-bit/32-bit value at 0x08XXXXXX
+    lw      a5, 0x00(a4)    # Load data from RAM
+    sw      a5, 0x00(a6)    # Store data into flash
+
+    # Check BUSY
+2:  lw      a3, 0x0C(a2)    # FMC_STAT
+    andi    a3, a3, 1 << 0  # BUSY bit
+    bnez    a3, 2b
+
+    # Increment counter and loop 1024 times
+    addi    a6, a6, 4
+    addi    a4, a4, 4
+    bne     a4, a0, 1b
+
+    # Lock
+    lw      a3, 0x10(a2)    # FMC_CTL
+    li      a4, ~(1 << 0)   # Clear PG bit
+    and     a3, a3, a4
+    ori     a3, a3, 1 << 7  # Set LK bit (lock)
+    sw      a3, 0x10(a2)
+
+    ret
+
+# --------
+
 .macro print message, length, csr
     la      a0, bios_prefix
     li      a1, 16
@@ -379,6 +501,9 @@ return_address:
 
 interrupt_taken:
     .ascii  "Interrupt taken!\r\n"
+
+unknown_interrupt_taken:
+    .ascii  "Unknown interrupt taken!\r\n"
 
 error:
     .ascii  "<too big>\r\n"

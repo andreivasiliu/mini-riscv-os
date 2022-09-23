@@ -8,6 +8,7 @@ pub(crate) fn put_char(byte: u8) {
             out("t0") _,
             out("t1") _,
             out("ra") _,
+            options(nomem, nostack),
         )
     };
 }
@@ -22,19 +23,47 @@ pub(crate) fn get_char() -> u8 {
             out("t0") _,
             out("t1") _,
             out("ra") _,
+            options(nomem, nostack),
         )
     };
 
     byte
 }
 
+pub(crate) fn flash_page_erase(page_number: u8) {
+    unsafe {
+        asm!(
+            "call   flash_page_erase",
+            inout("a0") page_number => _,
+            out("a1") _,
+            out("a2") _,
+            out("a3") _,
+            options(nostack),
+        )
+    };
+}
+
+pub(crate) fn flash_write(source_page: u8, target_page: u8) {
+    unsafe {
+        asm!(
+            "call   flash_write",
+            inout("a0") source_page => _,
+            inout("a1") target_page => _,
+            out("a2") _,
+            out("a3") _,
+            out("a4") _,
+            out("a5") _,
+            out("a6") _,
+            options(nostack),
+        )
+    };
+}
+
 pub(crate) fn ecall() {
     unsafe {
         asm!(
             "ecall",
-            // out("a0") _,
-            // out("a1") _,
-            // out("ra") _,
+            options(nomem, nostack),
         )
     };
 }

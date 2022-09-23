@@ -9,5 +9,6 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [profile.release]
-opt-level = "z"
+opt-level = 3
 panic = "abort"
+codegen-units = 1
