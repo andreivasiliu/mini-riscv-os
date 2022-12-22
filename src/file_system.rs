@@ -1,9 +1,11 @@
 use core::mem::MaybeUninit;
 
 use crate::{
-    bios_interface::{flash_page_erase, flash_write},
+    bios_interface::{flash_page_erase, flash_write, get_char},
     put,
 };
+
+const FS_PREFIX: &[u8] = b"[\x1b[1;34mfs\x1b[0m]";
 
 #[repr(C, align(1024))]
 pub(crate) struct FileSystem {
@@ -84,9 +86,13 @@ impl FileSystem {
     }
 
     fn save(&self, source_page: u8, target_page: u8) {
-        put!("Erasing flash page", target_page as u32 as i32);
+        put!(FS_PREFIX, "Erasing flash page", target_page as u32 as i32);
         flash_page_erase(target_page);
-        put!("Writing flash page from block", source_page as u32 as i32);
+        put!(
+            FS_PREFIX,
+            "Writing flash page from block",
+            source_page as u32 as i32
+        );
         flash_write(source_page, target_page);
         FileSystem::check();
     }
@@ -106,6 +112,14 @@ impl FileSystem {
     }
 
     pub(crate) fn create_file(&mut self, file_name: &[u8], content: &[u8]) -> Option<BlockId> {
+        put!(
+            FS_PREFIX,
+            "Creating file",
+            file_name,
+            "with size",
+            content.len() as i32
+        );
+
         let free_block = self.free_blocks.pop()?;
         self.first_blocks.push(free_block);
         let file_name = &file_name[..256.min(file_name.len())];
@@ -144,12 +158,16 @@ impl FileSystem {
     }
 
     pub(crate) fn remove_file(&mut self, file: BlockId) {
-        put!("Deleting file with block", file.0 as i32);
+        put!(FS_PREFIX, "Deleting file with block", file.0 as i32);
         let mut current_block = file;
         self.first_blocks.remove(file);
 
         loop {
-            put!("Reclaiming content block", current_block.0 as i32);
+            put!(
+                FS_PREFIX,
+                "Reclaiming content block",
+                current_block.0 as i32
+            );
             self.free_blocks.push(current_block);
 
             let block_info = self.block_info[current_block.0 as usize % 64];
@@ -160,6 +178,29 @@ impl FileSystem {
 
             current_block = block_info.next_block;
         }
+    }
+
+    pub(crate) fn paste_file(&mut self, file_name: &[u8], file_size: usize) {
+        put!("Pasting", file_size as i32, "bytes into:", file_name);
+
+        let mut content = [0; 1024];
+
+        if file_size >= 1024 {
+            put!("File size too large, multiple blocks not yet supported.");
+            return;
+        }
+
+        for index in 0..file_size {
+            content[index % 1024] = get_char();
+        }
+
+        put!("Done.");
+
+        if let Some(file) = self.file(file_name) {
+            put!("Removing existing file");
+            self.remove_file(file);
+        }
+        self.create_file(file_name, &content[0..file_size % 1024]);
     }
 
     pub(crate) fn list_files(&self) -> impl Iterator<Item = BlockId> + '_ {
@@ -200,9 +241,7 @@ impl FileSystem {
     }
 
     fn bytes(&self, block_id: BlockId) -> &[u8; 1024] {
-        let block = unsafe {
-            &(*self.blocks)[block_id.0 as usize % 64]
-        };
+        let block = unsafe { &(*self.blocks)[block_id.0 as usize % 64] };
         &block.bytes
     }
 
@@ -214,11 +253,7 @@ impl FileSystem {
         let start = block_info.file_name_size as usize % 1024;
         let end = (start + block_info.content_size as usize) % 1024;
 
-        let end = if start > end {
-            start
-        } else {
-            end
-        };
+        let end = if start > end { start } else { end };
 
         let content = &bytes[start..end];
 
@@ -235,6 +270,7 @@ impl FileSystem {
         let status = unsafe { (0x4002200C as *const i32).read_volatile() };
 
         put!(
+            FS_PREFIX,
             "wp0",
             wp0,
             "wp2",

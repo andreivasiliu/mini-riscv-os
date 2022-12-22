@@ -2,14 +2,19 @@
 #![no_main]
 
 use file_system::FileSystem;
+use xmodem::receive_file;
 
-use crate::{bios_interface::{get_char, ecall}, edit_line::{EditLine, EditLineEvent}};
+use crate::{
+    bios_interface::{ecall, get_char},
+    edit_line::{EditLine, EditLineEvent},
+};
 
-mod panic;
-mod print;
 mod bios_interface;
 mod edit_line;
 mod file_system;
+mod panic;
+mod print;
+mod xmodem;
 
 #[no_mangle]
 fn os_main() {
@@ -57,7 +62,7 @@ fn process_escape_code(escape_code: &[u8]) {
         b"[B" => put!("Escape code: Down key"),
         _ => {
             putn!("Unrecognized escape code: Esc");
-    
+
             for &byte in escape_code {
                 if byte.is_ascii_graphic() {
                     putn!(" '", byte, "'");
@@ -88,26 +93,24 @@ fn process_command(command: &[u8], file_system: &mut &mut FileSystem) {
             ecall();
             put!("Back to Rust now.");
         }
-        b"fs" => {
-            match args {
-                b"stats" => {
-                    file_system.print_stats();
-                }
-                b"save" => {
-                    file_system.save_file_system();
-                }
-                b"load" => {
-                    *file_system = FileSystem::load_from_flash();
-                }
-                b"reset" => {
-                    *file_system = FileSystem::new_from_scratch();
-                }
-                _ => {
-                    put!("Unknown argument:", args);
-                    put!("Subcommands: stats, save, load, reset");
-                }
+        b"fs" => match args {
+            b"stats" => {
+                file_system.print_stats();
             }
-        }
+            b"save" => {
+                file_system.save_file_system();
+            }
+            b"load" => {
+                *file_system = FileSystem::load_from_flash();
+            }
+            b"reset" => {
+                *file_system = FileSystem::new_from_scratch();
+            }
+            _ => {
+                put!("Unknown argument:", args);
+                put!("Subcommands: stats, save, load, reset");
+            }
+        },
         b"write" | b"create" => {
             let (file_name, content) = get_word(args);
 
@@ -135,13 +138,27 @@ fn process_command(command: &[u8], file_system: &mut &mut FileSystem) {
             }
         }
         b"rm" => {
-            let (file_name_arg, _) = get_word(args);
+            let (file_name, _) = get_word(args);
 
-            let file = file_system.list_files().find(|&file| file_system.file_name(file) == file_name_arg);
+            let file = file_system
+                .list_files()
+                .find(|&file| file_system.file_name(file) == file_name);
 
             if let Some(file) = file {
                 file_system.remove_file(file);
+            } else {
+                put!("File not found:", file_name);
             }
+        }
+        b"rx" => {
+            receive_file(file_system);
+        }
+        b"paste" => {
+            let (file_name, rest) = get_word(args);
+            let (file_size, _) = get_word(rest);
+            let file_size = string_to_number(file_size) as usize;
+
+            file_system.paste_file(file_name, file_size);
         }
         c => put!("Unknown command:", c),
     }
@@ -165,4 +182,19 @@ fn get_word(s: &[u8]) -> (&[u8], &[u8]) {
     }
 
     return (s, b"");
+}
+
+fn string_to_number(s: &[u8]) -> u32 {
+    let mut number = 0;
+
+    for &byte in s {
+        if byte >= b'0' && byte <= b'9' {
+            let digit = byte - b'0';
+
+            number *= 10;
+            number += digit as u32;
+        }
+    }
+
+    number
 }
