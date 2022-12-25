@@ -5,7 +5,7 @@ use file_system::FileSystem;
 use xmodem::receive_file;
 
 use crate::{
-    bios_interface::{ecall, get_char},
+    bios_interface::{ecall1, get_char},
     edit_line::{EditLine, EditLineEvent},
 };
 
@@ -15,6 +15,7 @@ mod file_system;
 mod panic;
 mod print;
 mod xmodem;
+mod sys_call;
 
 #[no_mangle]
 fn os_main() {
@@ -90,8 +91,19 @@ fn process_command(command: &[u8], file_system: &mut &mut FileSystem) {
         }
         b"ecall" => {
             put!("Calling system interrupt...");
-            ecall();
+            let (arg1, _) = get_word(args);
+            let arg1 = string_to_number(arg1);
+            ecall1(1, arg1);
             put!("Back to Rust now.");
+        }
+        b"leds" => {
+            let (arg1, _) = get_word(args);
+            sys_call::set_leds(arg1);
+        }
+        b"delay" => {
+            let (arg1, _) = get_word(args);
+            let milliseconds = string_to_number(arg1);
+            sys_call::delay(milliseconds);
         }
         b"fs" => match args {
             b"stats" => {

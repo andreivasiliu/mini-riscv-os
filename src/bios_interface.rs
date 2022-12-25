@@ -59,10 +59,12 @@ pub(crate) fn flash_write(source_page: u8, target_page: u8) {
     };
 }
 
-pub(crate) fn ecall() {
+pub(crate) fn ecall1(syscall_number: u8, arg1: u32) {
     unsafe {
         asm!(
             "ecall",
+            in("a0") syscall_number,
+            in("a1") arg1,
             options(nomem, nostack),
         )
     };

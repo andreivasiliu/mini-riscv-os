@@ -10,9 +10,13 @@ _start:
     call    disable_interrupts
     call    init_clocks
     call    init_blue_led
+    call    init_red_led
+    call    init_green_led
     call    turn_on_blue_led
     call    init_usart
     call    turn_off_blue_led
+    call    turn_off_red_led
+    call    turn_off_green_led
     call    setup_interrupts
 
     la      a0, helloworld
@@ -60,7 +64,10 @@ interrupt_handler:
     sw      t0, -36(sp)
     sw      t1, -40(sp)
 
-    call    turn_on_blue_led
+    # Skip program counter over the ecall instruction
+    csrr    a0, mepc
+    addi    a0, a0, 4
+    csrw    mepc, a0
 
     csrr    a2, mcause
     addi    a2, a2, -11     # Environment call from M-mode
@@ -73,20 +80,24 @@ interrupt_handler:
     la      a0, unknown_interrupt_taken
     li      a1, 26
     call    usart_send_string
-    j       2f
+    j       ecall_end
 
-1:  la      a0, bios_prefix
+1:  # Print "Interrupt taken!"
+    la      a0, bios_prefix
     li      a1, 16
     call    usart_send_string
     la      a0, interrupt_taken
     li      a1, 18
     call    usart_send_string
 
-2:  # Skip program counter over the ecall instruction
-    csrr    a0, mepc
-    addi    a0, a0, 4
-    csrw    mepc, a0
+    # Check system call number
+    lw      a0, -8(sp)
+    addi    a0, a0, -1
+    beqz    a0, syscall_delay
+    addi    a0, a0, -1
+    beqz    a0, syscall_leds
 
+ecall_end:
     # Restore registers
     lw      ra, -4(sp)
     lw      a0, -8(sp)
@@ -104,6 +115,76 @@ interrupt_handler:
 
 # --------
 
+# System calls
+
+syscall_delay:
+    # Print "Syscall: Delay"
+    la      a0, bios_prefix
+    li      a1, 16
+    call    usart_send_string
+    la      a0, ascii_syscall_delay
+    li      a1, 16
+    call    usart_send_string
+
+    # Syscall arguments
+    lw      a2, -12(sp)     # Arg 1: Milliseconds
+
+    li      a0, 2000
+    mul     a2, a2, a0
+
+1:  addi    a2, a2, -1
+    bnez    a2, 1b
+
+    j       ecall_end
+
+
+syscall_leds:
+    # Print "Syscall: Set LEDs"
+    la      a0, bios_prefix
+    li      a1, 16
+    call    usart_send_string
+    la      a0, ascii_syscall_set_leds
+    li      a1, 19
+    call    usart_send_string
+
+    # Syscall arguments
+    lw      a2, -12(sp)     # Arg 1: Led mask
+
+    # Turn on red led
+    andi    a3, a2, 0b000001
+    beqz    a3, 2f
+    call    turn_on_red_led
+
+2:  # Turn on green led
+    andi    a3, a2, 0b000010
+    beqz    a3, 3f
+    call    turn_on_green_led
+
+3:  # Turn on blue led
+    andi    a3, a2, 0b000100
+    beqz    a3, 4f
+    call    turn_on_blue_led
+
+4:   # Turn off red led
+    andi    a3, a2, 0b001000
+    beqz    a3, 5f
+    call    turn_off_red_led
+
+5:  # Turn off green led
+    andi    a3, a2, 0b010000
+    beqz    a3, 6f
+    call    turn_off_green_led
+
+6:  # Turn off blue led
+    andi    a3, a2, 0b100000
+    beqz    a3, 7f
+    call    turn_off_blue_led
+
+7:  j       ecall_end
+
+
+# --------
+
 # RCU base: 0x4002 1000
 
 init_clocks:
@@ -112,6 +193,7 @@ init_clocks:
     li      a2, 1 << 14     # Enable USART0EN (USART0 clock enable)
     or      a1, a1, a2
     ori     a1, a1, 1 << 2  # Enable PAEN (GPIO port A clock enable)
+    ori     a1, a1, 1 << 4  # Enable PCEN (GPIO port C clock enable)
     # ori     a1, a1, 1 << 0  # Enable AFEN (Alternate function IO clock enable)
     sw      a1, 0x18(a0)    # Store in RCU_APB2EN
 
@@ -123,6 +205,64 @@ init_clocks:
 # PC13: Red LED (GPIOC, CTL1, bit shift 20)
 # PA1: Green LED (GPIOA, CTL0, bit shift 4)
 # PA2: Blue LED (GPIOA, CTL0, bit shift 8)
+
+init_red_led:
+    li      a0, 0x40011000  # GPIOC_BASE
+
+    lw      a1, 0x04(a0)    # Load GPIOC_CTL1
+    li      a2, ~(0b1111 << 20) # Shift 20 for GPIO PA2 (red led)
+    li      a3, 0b0011 << 20 # Configure as output, push-pull, 50MHz
+    and     a1, a1, a2      # Clear previous configuration
+    or      a1, a1, a3      # Set new configuration
+    sw      a1, 0x04(a0)    # Store to GPIOC_CTL1
+
+    ret
+
+turn_on_red_led:
+    li      a0, 0x40011000  # GPIOC_BASE
+
+    li      a1, 1 << 13     # Select PC13 (red led)
+    sw      a1, 0x14(a0)    # Set to GPIOx_BC (bit clear, turn on)
+
+    ret
+
+turn_off_red_led:
+    li      a0, 0x40011000  # GPIOC_BASE
+
+    li      a1, 1 << 13     # Select PC13 (red led)
+    sw      a1, 0x10(a0)    # GPIOx_BOP (bit operate, turn off)
+
+    ret
+
+
+init_green_led:
+    li      a0, 0x40010800  # GPIOA_BASE
+
+    lw      a1, (a0)        # Load GPIOA_CTL0
+    li      a2, ~(0b1111 << 4) # Shift 4 for GPIO PA2 (green led)
+    li      a3, 0b0011 << 4 # Configure as output, push-pull, 50MHz
+    and     a1, a1, a2      # Clear previous configuration
+    or      a1, a1, a3      # Set new configuration
+    sw      a1, (a0)        # Store to GPIOA_CTL0
+
+    ret
+
+turn_on_green_led:
+    li      a0, 0x40010800  # GPIOA_BASE
+
+    li      a1, 1 << 1      # Select PA1 (green led)
+    sw      a1, 0x14(a0)    # Set to GPIOx_BC (bit clear, turn on)
+
+    ret
+
+turn_off_green_led:
+    li      a0, 0x40010800  # GPIOA_BASE
+
+    li      a1, 1 << 1      # Select PA1 (green led)
+    sw      a1, 0x10(a0)    # GPIOx_BOP (bit operate, turn off)
+
+    ret
+
 
 init_blue_led:
     li      a0, 0x40010800  # GPIOA_BASE
@@ -501,6 +641,12 @@ return_address:
 
 interrupt_taken:
     .ascii  "Interrupt taken!\r\n"
+
+ascii_syscall_set_leds:
+    .ascii  "Syscall: Set LEDs\r\n"
+
+ascii_syscall_delay:
+    .ascii  "Syscall: Delay\r\n"
 
 unknown_interrupt_taken:
     .ascii  "Unknown interrupt taken!\r\n"
