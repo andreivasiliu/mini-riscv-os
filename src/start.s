@@ -17,6 +17,7 @@ _start:
     call    turn_off_blue_led
     call    turn_off_red_led
     call    turn_off_green_led
+    call    init_globals
     call    setup_interrupts
 
     la      a0, helloworld
@@ -52,7 +53,7 @@ setup_interrupts:
 interrupt_handler:
     # Save basic registers
     csrw    mscratch, sp
-    li      sp, 0x20000000 + 32 * 1024
+    li      sp, 0x20000000 + 31 * 1024
     sw      ra, -4(sp)
     sw      a0, -8(sp)
     sw      a1, -12(sp)
@@ -96,6 +97,10 @@ interrupt_handler:
     beqz    a0, syscall_delay
     addi    a0, a0, -1
     beqz    a0, syscall_leds
+    addi    a0, a0, -1
+    beqz    a0, syscall_exec
+    addi    a0, a0, -1
+    beqz    a0, syscall_exit
 
 ecall_end:
     # Restore registers
@@ -183,6 +188,60 @@ syscall_leds:
 7:  j       ecall_end
 
 
+syscall_exec:
+    # Print "Syscall: Exec"
+    la      a0, bios_prefix
+    li      a1, 16
+    call    usart_send_string
+    la      a0, ascii_syscall_exec
+    li      a1, 15
+    call    usart_send_string
+
+    li      a0, 0x20000000 + 31 * 1024  # Globals
+    addi    a1, a0, 0x04    # Execution stack location
+
+    lw      a2, 0x00(a0)    # Execution stack depth
+    add     a3, a1, a2      # Current save point
+
+    csrr    a4, mepc        # Current program counter
+    sw      a4, (a3)        # Save to save point
+    addi    a2, a2, 0x04    # Increase depth
+    sw      a2, 0x00(a0)    # Save new stack depth
+
+    # Syscall arguments
+    lw      a5, -12(sp)     # Arg 1: Execution address
+
+    csrw    mepc, a5        # Change return address
+
+    j       ecall_end
+
+
+syscall_exit:
+    # Print "Syscall: Exit"
+    la      a0, bios_prefix
+    li      a1, 16
+    call    usart_send_string
+    la      a0, ascii_syscall_exit
+    li      a1, 15
+    call    usart_send_string
+
+    li      a0, 0x20000000 + 31 * 1024  # Globals
+    addi    a1, a0, 0x04    # Execution stack location
+
+    lw      a2, 0x00(a0)    # Execution stack depth
+    addi    a2, a2, -0x04   # Decrease depth
+    sw      a2, 0x00(a0)    # Save new stack depth
+
+    add     a3, a1, a2      # Last save point
+    lw      a4, (a3)        # Load from save point
+
+    # Syscall arguments
+    lw      a5, -12(sp)     # Arg 1: Exit code (ignored)
+
+    csrw    mepc, a4        # Change return address
+
+    j       ecall_end
+
 # --------
 
 # RCU base: 0x4002 1000
@@ -196,6 +255,15 @@ init_clocks:
     ori     a1, a1, 1 << 4  # Enable PCEN (GPIO port C clock enable)
     # ori     a1, a1, 1 << 0  # Enable AFEN (Alternate function IO clock enable)
     sw      a1, 0x18(a0)    # Store in RCU_APB2EN
+
+    ret
+
+# --------
+
+init_globals:
+    li      a0, 0x20000000 + 31 * 1024
+
+    sw      x0, 0x00(a0)    # Execution stack depth
 
     ret
 
@@ -647,6 +715,12 @@ ascii_syscall_set_leds:
 
 ascii_syscall_delay:
     .ascii  "Syscall: Delay\r\n"
+
+ascii_syscall_exec:
+    .ascii  "Syscall: Exec\r\n"
+
+ascii_syscall_exit:
+    .ascii  "Syscall: Exit\r\n"
 
 unknown_interrupt_taken:
     .ascii  "Unknown interrupt taken!\r\n"

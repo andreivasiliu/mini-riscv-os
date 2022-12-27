@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use elf::read_elf;
 use file_system::FileSystem;
 use xmodem::receive_file;
 
@@ -16,6 +17,7 @@ mod panic;
 mod print;
 mod xmodem;
 mod sys_call;
+mod elf;
 
 #[no_mangle]
 fn os_main() {
@@ -104,6 +106,20 @@ fn process_command(command: &[u8], file_system: &mut &mut FileSystem) {
             let (arg1, _) = get_word(args);
             let milliseconds = string_to_number(arg1);
             sys_call::delay(milliseconds);
+        }
+        b"run" => {
+            let (arg1, _) = get_word(args);
+            run_program(file_system, arg1)
+        }
+        b"exec" => {
+            let (arg1, _) = get_word(args);
+            let address = string_to_number(arg1);
+            sys_call::exec(address);
+        }
+        b"exit" => {
+            let (arg1, _) = get_word(args);
+            let exit_code = string_to_number(arg1);
+            sys_call::exit(exit_code);
         }
         b"fs" => match args {
             b"stats" => {
@@ -209,4 +225,36 @@ fn string_to_number(s: &[u8]) -> u32 {
     }
 
     number
+}
+
+fn run_program(file_system: &mut FileSystem, file_name: &[u8]) {
+    let block_id = match file_system.file(file_name) {
+        Some(block_id) => block_id,
+        None => {
+            put!("File not found:", file_name);
+            return;
+        },
+    };
+
+    let contents = file_system.read_file(block_id);
+
+    if contents.len() < 56 {
+        put!("Cannot run program: Header too short.");
+        return;
+    }
+
+    let entry_point = match read_elf(contents) {
+        Ok(address) => address,
+        Err(err) => {
+            put!("Cannot run program:", err);
+            return;
+        }
+    };
+
+    let file_address = file_system.file_address(block_id);
+    let exec_address = file_address + entry_point;
+
+    put!("Running program from:", file_address as i32, exec_address as i32);
+
+    sys_call::exec(exec_address as u32);
 }

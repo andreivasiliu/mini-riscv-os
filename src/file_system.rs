@@ -140,14 +140,15 @@ impl FileSystem {
                     .write_volatile(file_name[index]);
             }
         }
-        if file_name.len() + content.len() >= 1024 {
+        let content_start = round_up(file_name.len(), 4);
+        if content_start + content.len() >= 1024 {
             // TODO: write to next block
             return None;
         }
         for index in 0..content.len() {
             unsafe {
                 write_block
-                    .offset((file_name.len() + index) as isize)
+                    .offset((content_start + index) as isize)
                     .write_volatile(content[index]);
             }
         }
@@ -225,6 +226,13 @@ impl FileSystem {
         &block.bytes[..block_info.file_name_size as usize % 256]
     }
 
+    pub(crate) fn file_address(&self, block_id: BlockId) -> usize {
+        let bytes = self.bytes(block_id);
+        let block_info = self.block(block_id);
+
+        bytes.as_ptr() as usize + round_up(block_info.file_name_size as usize, 4)
+    }
+
     pub(crate) fn file(&self, file_name: &[u8]) -> Option<BlockId> {
         for file in self.list_files() {
             let file_name_2 = self.file_name(file);
@@ -250,7 +258,7 @@ impl FileSystem {
         let bytes = self.bytes(block_id);
         let block_info = self.block(block_id);
 
-        let start = block_info.file_name_size as usize % 1024;
+        let start = round_up(block_info.file_name_size as usize % 1024, 4);
         let end = (start + block_info.content_size as usize) % 1024;
 
         let end = if start > end { start } else { end };
@@ -320,5 +328,13 @@ impl Stack {
         (0..self.count)
             .into_iter()
             .map(|index| self.elements[index as usize % 64])
+    }
+}
+
+fn round_up(value: usize, multiple: usize) -> usize {
+    if value % multiple == 0 {
+        value
+    } else {
+        value / multiple * multiple + multiple
     }
 }

@@ -12,3 +12,4 @@ crate-type = ["staticlib"]
 opt-level = 3
 panic = "abort"
 codegen-units = 1
+lto = "fat"

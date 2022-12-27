@@ -28,3 +28,11 @@ pub(crate) fn set_leds(colors: &[u8]) {
 pub(crate) fn delay(delay: u32) {
     ecall1(1, delay);
 }
+
+pub(crate) fn exec(address: u32) {
+    ecall1(3, address);
+}
+
+pub(crate) fn exit(code: u32) {
+    ecall1(4, code);
+}
