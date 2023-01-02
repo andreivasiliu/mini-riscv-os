@@ -27,10 +27,17 @@ pub fn exec(address: u32) {
 }
 
 pub fn exit(code: u32) -> ! {
+    // Note: This never returns.
+    ecall1(4, code);
+    // In case it does, just loop forever in power-saving mode.
     loop {
-        // Note: This never returns.
-        // In case it does, just keep calling it; this function must likewise
-        // never return.
-        ecall1(4, code);
+        // Wait for interrupt.
+        unsafe {
+            asm!("wfi");
+        }
     }
+}
+
+pub fn put_byte(byte: u8) {
+    ecall1(5, byte.into());
 }

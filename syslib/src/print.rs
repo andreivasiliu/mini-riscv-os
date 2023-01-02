@@ -1,6 +1,8 @@
-use crate::bios_interface::put_char;
+fn put_char(byte: u8) {
+    syscall::put_byte(byte);
+}
 
-pub(crate) trait Printable {
+pub trait Printable {
     fn print(&self);
 }
 
@@ -61,24 +63,24 @@ fn put_decimal(mut d: i32) {
     put_char(first_digit as u8 + b'0');
 }
 
-pub(crate) fn put_printable(p: impl Printable) {
+pub fn put_printable(p: impl Printable) {
     p.print();
 }
 
 #[macro_export]
 macro_rules! put {
     () => {{
-        crate::print::put_printable("\r\n");
+        syslib::print::put_printable("\r\n");
     }};
 
     ($expression:expr) => {{
-        crate::print::put_printable($expression);
-        crate::print::put_printable("\r\n");
+        syslib::print::put_printable($expression);
+        syslib::print::put_printable("\r\n");
     }};
 
     ($expression:expr, $($rest:expr),+) => {{
-        crate::print::put_printable($expression);
-        crate::print::put_printable(" ");
+        syslib::print::put_printable($expression);
+        syslib::print::put_printable(" ");
         put!($($rest),+);
     }};
 }
@@ -86,11 +88,11 @@ macro_rules! put {
 #[macro_export]
 macro_rules! putn {
     ($expression:expr) => {{
-        crate::print::put_printable($expression);
+        syslib::print::put_printable($expression);
     }};
 
     ($expression:expr, $($rest:expr),+) => {{
-        crate::print::put_printable($expression);
+        syslib::print::put_printable($expression);
         putn!($($rest),+);
     }};
 }

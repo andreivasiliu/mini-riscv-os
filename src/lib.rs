@@ -5,6 +5,8 @@ use elf::read_elf;
 use file_system::FileSystem;
 use xmodem::receive_file;
 
+use syslib::{put, putn};
+
 use crate::{
     bios_interface::{ecall1, get_char},
     edit_line::{EditLine, EditLineEvent},
@@ -14,7 +16,6 @@ mod bios_interface;
 mod edit_line;
 mod file_system;
 mod panic;
-mod print;
 mod xmodem;
 mod sys_call;
 mod elf;

@@ -38,6 +38,7 @@ pub(crate) fn flash_page_erase(page_number: u8) {
             out("a1") _,
             out("a2") _,
             out("a3") _,
+            out("ra") _,
             options(nostack),
         )
     };
@@ -54,6 +55,7 @@ pub(crate) fn flash_write(source_page: u8, target_page: u8) {
             out("a4") _,
             out("a5") _,
             out("a6") _,
+            out("ra") _,
             options(nostack),
         )
     };

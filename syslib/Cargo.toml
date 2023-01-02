@@ -1,5 +1,5 @@
 [package]
-name = "usb-prog"
+name = "syslib"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,8 +7,3 @@ edition = "2021"
 
 [dependencies]
 syscall = { path = "../syscall" }
-syslib = { path = "../syslib" }
-
-[profile.release]
-strip = true
-lto = "fat"

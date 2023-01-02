@@ -26,7 +26,7 @@ _start:
 
     call    show_interrupt_info
 
-    li      sp, 0x20000000 + 31 * 1024
+    li      sp, 0x20000000 + 30 * 1024
 
     call    os_main
     call    cycle_blue_led
@@ -83,15 +83,7 @@ interrupt_handler:
     call    usart_send_string
     j       ecall_end
 
-1:  # Print "Interrupt taken!"
-    la      a0, bios_prefix
-    li      a1, 16
-    call    usart_send_string
-    la      a0, interrupt_taken
-    li      a1, 18
-    call    usart_send_string
-
-    # Check system call number
+1:  # Check system call number
     lw      a0, -8(sp)
     addi    a0, a0, -1
     beqz    a0, syscall_delay
@@ -101,6 +93,8 @@ interrupt_handler:
     beqz    a0, syscall_exec
     addi    a0, a0, -1
     beqz    a0, syscall_exit
+    addi    a0, a0, -1
+    beqz    a0, syscall_put_byte
 
 ecall_end:
     # Restore registers
@@ -239,6 +233,15 @@ syscall_exit:
     lw      a5, -12(sp)     # Arg 1: Exit code (ignored)
 
     csrw    mepc, a4        # Change return address
+
+    j       ecall_end
+
+
+syscall_put_byte:
+    # Syscall arguments
+    lw      a6, -12(sp)     # Arg 1: Byte/character to print
+
+    call    usart_put_byte
 
     j       ecall_end
 
