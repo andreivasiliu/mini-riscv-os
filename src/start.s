@@ -64,6 +64,8 @@ interrupt_handler:
     sw      a6, -32(sp)
     sw      t0, -36(sp)
     sw      t1, -40(sp)
+    sw      s0, -44(sp)
+    sw      s1, -48(sp)
 
     # Skip program counter over the ecall instruction
     csrr    a0, mepc
@@ -108,6 +110,8 @@ ecall_end:
     lw      a6, -32(sp)
     lw      t0, -36(sp)
     lw      t1, -40(sp)
+    lw      s0, -44(sp)
+    lw      s1, -48(sp)
     csrr    sp, mscratch
 
     mret
@@ -198,8 +202,55 @@ syscall_exec:
     add     a3, a1, a2      # Current save point
 
     csrr    a4, mepc        # Current program counter
-    sw      a4, (a3)        # Save to save point
-    addi    a2, a2, 0x04    # Increase depth
+    sw      a4, 0x00(a3)    # Save to save point
+
+    # Save registers
+    lw      a4, -4(sp)
+    sw      a4, 1*4(a3)       # x1 (ra)
+    csrr    a4, mscratch
+    sw      a4, 2*4(a3)    # x2 (sp)
+    sw      x3, 3*4(a3)    # x3 (gp)
+    sw      x4, 4*4(a3)    # x4 (tp)
+    lw      a4, -36(sp)
+    sw      a4, 5*4(a3)    # x5 (t0)
+    lw      a4, -40(sp)
+    sw      a4, 6*4(a3)    # x6 (t1)
+    sw      x7, 7*4(a3)    # x7 (t2)
+    lw      a4, -44(sp)
+    sw      a4, 8*4(a3)    # x8 (s0/fp)
+    lw      a4, -48(sp)
+    sw      a4, 9*4(a3)    # x9 (s1)
+    lw      a4, -8(sp)
+    sw      a4, 10*4(a3)    # x10 (a0)
+    lw      a4, -12(sp)
+    sw      a4, 11*4(a3)    # x11 (a1)
+    lw      a4, -16(sp)
+    sw      a4, 12*4(a3)    # x12 (a2)
+    lw      a4, -20(sp)
+    sw      a4, 13*4(a3)    # x13 (a3)
+    lw      a4, -24(sp)
+    sw      a4, 14*4(a3)    # x14 (a4)
+    lw      a4, -28(sp)
+    sw      a4, 15*4(a3)    # x15 (a5)
+    lw      a4, -32(sp)
+    sw      a4, 16*4(a3)    # x16 (a6)
+    sw      x17, 17*4(a3)   # x17 (a7)
+    sw      x18, 18*4(a3)   # x18 (s2)
+    sw      x19, 19*4(a3)   # x19 (s3)
+    sw      x20, 20*4(a3)   # x20 (s4)
+    sw      x21, 21*4(a3)   # x21 (s5)
+    sw      x22, 22*4(a3)   # x22 (s6)
+    sw      x23, 23*4(a3)   # x23 (s7)
+    sw      x24, 24*4(a3)   # x24 (s8)
+    sw      x25, 25*4(a3)   # x25 (s9)
+    sw      x26, 26*4(a3)   # x26 (s10)
+    sw      x27, 27*4(a3)   # x27 (s11)
+    sw      x28, 28*4(a3)   # x28 (t3)
+    sw      x29, 29*4(a3)   # x29 (t4)
+    sw      x30, 30*4(a3)   # x30 (t5)
+    sw      x31, 31*4(a3)   # x31 (t6)
+
+    addi    a2, a2, 32*4    # Increase depth
     sw      a2, 0x00(a0)    # Save new stack depth
 
     # Syscall arguments
@@ -223,16 +274,61 @@ syscall_exit:
     addi    a1, a0, 0x04    # Execution stack location
 
     lw      a2, 0x00(a0)    # Execution stack depth
-    addi    a2, a2, -0x04   # Decrease depth
+    addi    a2, a2, -32*4   # Decrease depth
     sw      a2, 0x00(a0)    # Save new stack depth
 
     add     a3, a1, a2      # Last save point
     lw      a4, (a3)        # Load from save point
+    csrw    mepc, a4        # Change return address
+
+    # Load registers
+    lw      a4, 1*4(a3)       # x1 (ra)
+    sw      a4, -4(sp)
+    lw      a4, 2*4(a3)    # x2 (sp)
+    csrw    mscratch, a4
+    lw      x3, 3*4(a3)    # x3 (gp)
+    lw      x4, 4*4(a3)    # x4 (tp)
+    lw      a4, 5*4(a3)    # x5 (t0)
+    sw      a4, -36(sp)
+    lw      a4, 6*4(a3)    # x6 (t1)
+    sw      a4, -40(sp)
+    lw      x7, 7*4(a3)    # x7 (t2)
+    lw      a4, 8*4(a3)    # x8 (s0/fp)
+    sw      a4, -44(sp)
+    lw      a4, 9*4(a3)    # x9 (s1)
+    sw      a4, -48(sp)
+    lw      a4, 10*4(a3)    # x10 (a0)
+    sw      a4, -8(sp)
+    lw      a4, 11*4(a3)    # x11 (a1)
+    sw      a4, -12(sp)
+    lw      a4, 12*4(a3)    # x12 (a2)
+    sw      a4, -16(sp)
+    lw      a4, 13*4(a3)    # x13 (a3)
+    sw      a4, -20(sp)
+    lw      a4, 14*4(a3)    # x14 (a4)
+    sw      a4, -24(sp)
+    lw      a4, 15*4(a3)    # x15 (a5)
+    sw      a4, -28(sp)
+    lw      a4, 16*4(a3)    # x16 (a6)
+    sw      a4, -32(sp)
+    lw      x17, 17*4(a3)   # x17 (a7)
+    lw      x18, 18*4(a3)   # x18 (s2)
+    lw      x19, 19*4(a3)   # x19 (s3)
+    lw      x20, 20*4(a3)   # x20 (s4)
+    lw      x21, 21*4(a3)   # x21 (s5)
+    lw      x22, 22*4(a3)   # x22 (s6)
+    lw      x23, 23*4(a3)   # x23 (s7)
+    lw      x24, 24*4(a3)   # x24 (s8)
+    lw      x25, 25*4(a3)   # x25 (s9)
+    lw      x26, 26*4(a3)   # x26 (s10)
+    lw      x27, 27*4(a3)   # x27 (s11)
+    lw      x28, 28*4(a3)   # x28 (t3)
+    lw      x29, 29*4(a3)   # x29 (t4)
+    lw      x30, 30*4(a3)   # x30 (t5)
+    lw      x31, 31*4(a3)   # x31 (t6)
 
     # Syscall arguments
     lw      a5, -12(sp)     # Arg 1: Exit code (ignored)
-
-    csrw    mepc, a4        # Change return address
 
     j       ecall_end
 
